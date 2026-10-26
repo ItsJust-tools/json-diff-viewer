@@ -12,10 +12,12 @@ import { cn } from '@/lib/utils';
 import { generateJsonLd, generateToolMetadata } from '@/lib/seo';
 import toolConfig from '@/tool/tool.config';
 import { getPublicSiteUrl, templateMetadata } from '@/tool/template-metadata';
-import { notepadTool } from '@/tool/tool-definition';
+import { jsonDiffTool } from '@/tool/tool-definition';
 import { ToolCanvas } from '@/tool/components/tool-canvas';
 import { ToolSidebar } from '@/tool/components/tool-sidebar';
 import { ToolToolbar } from '@/tool/components/tool-toolbar';
+import { diffJsonText } from '@/tool/lib/json-diff';
+import { initialJsonDiffState } from '@/tool/tool-definition';
 import type { ExporterLoader } from '@itsjust/core';
 
 vi.mock('next/link', () => ({
@@ -29,6 +31,57 @@ vi.mock('next/link', () => ({
 vi.mock('@/app/tool-client-wrapper', () => ({
   default: () => <div data-testid="tool-client-wrapper">tool-client-wrapper</div>,
 }));
+
+const LEFT = '{\n  "a": 1,\n  "b": 2\n}';
+const RIGHT = '{\n  "a": 1,\n  "b": 3,\n  "c": 4\n}';
+
+function renderDiffUi() {
+  const diff = diffJsonText(LEFT, RIGHT);
+  const noop = () => {};
+  return render(
+    <>
+      <ToolToolbar
+        viewMode="side-by-side"
+        onViewModeChange={noop}
+        searchQuery=""
+        onSearchChange={noop}
+        filter="all"
+        onFilterChange={noop}
+        showOnlyChanges
+        onShowOnlyChangesChange={noop}
+        onFormatBoth={noop}
+        onLoadSample={noop}
+        onClear={noop}
+        onExportReport={noop}
+      />
+      <ToolSidebar
+        diff={diff}
+        filter="all"
+        onFilterChange={noop}
+        showOnlyChanges
+        onShowOnlyChangesChange={noop}
+        wrapLines={false}
+        onWrapLinesChange={noop}
+        editorsVisible
+        onEditorsVisibleChange={noop}
+        onFormatBoth={noop}
+      />
+      <ToolCanvas
+        leftText={LEFT}
+        rightText={RIGHT}
+        viewMode="side-by-side"
+        searchQuery=""
+        filter="all"
+        showOnlyChanges
+        editorsVisible
+        wrapLines={false}
+        diff={diff}
+        onLeftTextChange={noop}
+        onRightTextChange={noop}
+      />
+    </>
+  );
+}
 
 describe('app and seo', () => {
   const getOgImageUrl = (
@@ -92,20 +145,16 @@ describe('app and seo', () => {
   it('covers tool definition and helper exports', async () => {
     expect(cn('a', undefined, 'b', false, null, 'c')).toBe('a b c');
     expect(getPublicSiteUrl()).toBe('http://localhost:3000');
-    expect(notepadTool.deserialize({ text: 'x' })).toEqual({
+    expect(jsonDiffTool.deserialize({ leftText: '{}', rightText: '{}' })).toEqual({
       success: true,
-      data: { text: 'x' },
+      data: { ...initialJsonDiffState, leftText: '{}', rightText: '{}' },
     });
-    expect(notepadTool.deserialize({ nope: true })).toEqual({
+    expect(jsonDiffTool.deserialize({ nope: true })).toEqual({
       success: false,
-      error: 'Invalid data format: expected { text: string, title?: string }',
+      error: 'Invalid data format: "leftText" must be a string',
     });
-    expect(notepadTool.serialize({ text: 'x' })).toContain('"text": "x"');
-    expect(notepadTool.deserialize({ text: 'x', title: 'My Note' })).toEqual({
-      success: true,
-      data: { text: 'x', title: 'My Note' },
-    });
-    const exporters = notepadTool.exporters ?? [];
+    expect(jsonDiffTool.serialize(initialJsonDiffState)).toContain('"viewMode": "side-by-side"');
+    const exporters = jsonDiffTool.exporters ?? [];
     expect(exporters).toHaveLength(4);
     const first = exporters[0];
     expect(first).toBeDefined();
@@ -116,16 +165,14 @@ describe('app and seo', () => {
   });
 
   it('renders tool components', () => {
-    render(
-      <>
-        <ToolToolbar />
-        <ToolSidebar text="Hello world" fontSize={16} onFontSizeChange={() => {}} />
-        <ToolCanvas text="" fontSize={16} />
-      </>
-    );
+    renderDiffUi();
 
-    expect(screen.getByRole('link', { name: 'Open help page' })).toBeInTheDocument();
-    expect(screen.getByText('11')).toBeInTheDocument(); // char count for "Hello world"
-    expect(screen.getByRole('application', { name: 'Notepad canvas' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /side-by-side/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /download diff report/i })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Left JSON input' })).toHaveValue(LEFT);
+    expect(screen.getByRole('textbox', { name: 'Right JSON input' })).toHaveValue(RIGHT);
+    expect(screen.getByRole('table', { name: 'JSON differences' })).toBeInTheDocument();
+    expect(screen.getByText('$.c')).toBeInTheDocument();
+    expect(screen.queryByText('Both documents are structurally identical.')).toBeNull();
   });
 });

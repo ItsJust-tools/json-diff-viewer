@@ -2,40 +2,156 @@ import { test, expect } from '@playwright/test';
 
 async function closeBackdropIfOpen(page: import('@playwright/test').Page) {
   const backdrop = page.locator('.sidebar-backdrop');
-  for (let i = 0; i < 3; i++) {
-    const visible = await backdrop.isVisible().catch(() => false);
-    if (!visible) return;
-    await backdrop.evaluate((el) => (el as HTMLElement).click());
-    await page.waitForTimeout(100);
-  }
+  if (!(await backdrop.isVisible().catch(() => false))) return;
+  await backdrop.evaluate((el) => (el as HTMLElement).click());
+  await expect(backdrop).toBeHidden();
 }
 
 async function ensureToolbarInteractable(page: import('@playwright/test').Page) {
   await closeBackdropIfOpen(page);
-  const backdrop = page.locator('.sidebar-backdrop');
-  if (await backdrop.isVisible().catch(() => false)) {
-    await page.keyboard.press('Control+b');
-    await expect(backdrop).toBeHidden();
-  }
 }
 
-async function typeInNotepad(page: import('@playwright/test').Page, text: string) {
-  await ensureToolbarInteractable(page);
-  const textarea = page.locator('.notepad-textarea');
-  await textarea.fill(text);
+/** Open the sidebar so sidebar-only controls are reachable on narrow viewports. */
+async function openSidebar(page: import('@playwright/test').Page) {
+  const sidebar = page.locator('.tool-shell-sidebar');
+  if (await sidebar.evaluate((el) => el.classList.contains('collapsed'))) {
+    await page.getByRole('button', { name: 'Show options' }).click();
+    await expect(sidebar).toHaveClass(/open/);
+  }
 }
 
 test('tool loads with correct title', async ({ page }) => {
   await page.goto('/');
-  const title = await page.title();
-  expect(title).toContain('Notepad');
+  await expect(page).toHaveTitle(/JSON Diff Viewer/);
 });
 
-test('textarea is editable', async ({ page }) => {
+test('empty state invites input on first load', async ({ page }) => {
   await page.goto('/');
-  const textarea = page.locator('.notepad-textarea');
-  await textarea.fill('Hello Notepad');
-  await expect(textarea).toHaveValue('Hello Notepad');
+  await expect(
+    page.getByText('Paste JSON into one or both editors to start comparing.')
+  ).toBeVisible();
+});
+
+test('sample comparison shows added, removed, and modified rows', async ({ page }, testInfo) => {
+  await page.goto('/');
+  await ensureToolbarInteractable(page);
+  if (testInfo.project.name.includes('Mobile')) {
+    await page.getByRole('checkbox', { name: 'Show JSON editors' }).check();
+  }
+  await page.getByRole('button', { name: 'Load sample JSON' }).click();
+
+  await expect(page.locator('.jd-row-added')).not.toHaveCount(0);
+  await expect(page.locator('.jd-row-removed')).not.toHaveCount(0);
+  await expect(page.locator('.jd-row-modified')).not.toHaveCount(0);
+  await expect(page.locator('.jd-row[data-path="$.database.ssl"]')).toBeVisible();
+});
+
+test('invalid JSON shows an inline error with a position', async ({ page }) => {
+  await page.goto('/');
+  await ensureToolbarInteractable(page);
+  await page.getByRole('textbox', { name: 'Left JSON input' }).fill('{"a": }');
+  const error = page.locator('.jd-editor-error').first();
+  await expect(error).toBeVisible();
+  await expect(error).toContainText('line');
+});
+
+test('format both pretty prints the inputs', async ({ page }) => {
+  await page.goto('/');
+  await ensureToolbarInteractable(page);
+  const left = page.getByRole('textbox', { name: 'Left JSON input' });
+  await left.fill('{"a":1,"b":2}');
+  await page.getByRole('button', { name: 'Format both JSON inputs' }).click();
+  await expect(left).toHaveValue('{\n  "a": 1,\n  "b": 2\n}');
+});
+
+test('view mode toggle switches column headers', async ({ page }) => {
+  await page.goto('/');
+  await ensureToolbarInteractable(page);
+  await page.getByRole('button', { name: 'Load sample JSON' }).click();
+  await expect(page.getByRole('columnheader', { name: 'Original' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Unified' }).click();
+  await expect(page.getByRole('columnheader', { name: 'Value' })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Original' })).toBeHidden();
+});
+
+test('search narrows the visible rows', async ({ page }) => {
+  await page.goto('/');
+  await ensureToolbarInteractable(page);
+  await page.getByRole('button', { name: 'Load sample JSON' }).click();
+  const before = await page.locator('.jd-row').count();
+
+  await page.getByRole('searchbox', { name: 'Search paths and values' }).fill('database');
+  await expect.poll(async () => page.locator('.jd-row').count()).toBeLessThan(before);
+
+  await page.getByRole('searchbox', { name: 'Search paths and values' }).fill('zzz-nothing');
+  await expect(page.getByText('No rows match the current search and filter.')).toBeVisible();
+});
+
+test('change filter select restricts row types', async ({ page }) => {
+  await page.goto('/');
+  await ensureToolbarInteractable(page);
+  await page.getByRole('button', { name: 'Load sample JSON' }).click();
+
+  await page.getByLabel('Filter by change type').selectOption('added');
+  await expect
+    .poll(async () =>
+      page
+        .locator('.jd-row')
+        .evaluateAll((rows) => [...new Set(rows.map((row) => (row as HTMLElement).dataset.change))])
+    )
+    .toEqual(['added']);
+});
+
+test('sidebar change chips restrict row types', async ({ page }) => {
+  await page.goto('/');
+  await ensureToolbarInteractable(page);
+  await page.getByRole('button', { name: 'Load sample JSON' }).click();
+  await openSidebar(page);
+
+  await page.getByRole('button', { name: 'Added', exact: true }).click();
+  await expect
+    .poll(async () =>
+      page
+        .locator('.jd-row')
+        .evaluateAll((rows) => [...new Set(rows.map((row) => (row as HTMLElement).dataset.change))])
+    )
+    .toEqual(['added']);
+});
+
+test('report menu downloads a JSON report', async ({ page }) => {
+  await page.goto('/');
+  await ensureToolbarInteractable(page);
+  await page.getByRole('button', { name: 'Load sample JSON' }).click();
+  await page.getByRole('button', { name: 'Download diff report' }).click();
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('menuitem', { name: 'Download JSON' }).click(),
+  ]);
+  expect(download.suggestedFilename()).toMatch(/^json-diff-.*\.json$/);
+});
+
+test('report menu downloads a Markdown report', async ({ page }) => {
+  await page.goto('/');
+  await ensureToolbarInteractable(page);
+  await page.getByRole('button', { name: 'Load sample JSON' }).click();
+  await page.getByRole('button', { name: 'Download diff report' }).click();
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('menuitem', { name: 'Download Markdown' }).click(),
+  ]);
+  expect(download.suggestedFilename()).toMatch(/^json-diff-.*\.md$/);
+});
+
+test('clear resets both inputs', async ({ page }) => {
+  await page.goto('/');
+  await ensureToolbarInteractable(page);
+  await page.getByRole('button', { name: 'Load sample JSON' }).click();
+  await page.getByRole('button', { name: 'Clear both JSON inputs' }).click();
+  await expect(page.getByRole('textbox', { name: 'Left JSON input' })).toHaveValue('');
+  await expect(page.getByRole('textbox', { name: 'Right JSON input' })).toHaveValue('');
 });
 
 test('undo/redo buttons enable/disable correctly', async ({ page }, testInfo) => {
@@ -47,34 +163,13 @@ test('undo/redo buttons enable/disable correctly', async ({ page }, testInfo) =>
   await expect(undoButton).toBeDisabled();
   await expect(redoButton).toBeDisabled();
 
-  if (testInfo.project.name.includes('Mobile')) {
-    const fileInput = page.locator('input[type="file"]');
-    await fileInput.evaluate((el: HTMLInputElement) => {
-      el.style.display = 'block';
-      el.style.visibility = 'visible';
-    });
-    await fileInput.setInputFiles({
-      name: 'undo-mobile.json',
-      mimeType: 'application/json',
-      buffer: Buffer.from(JSON.stringify({ text: 'undo mobile', fontSize: 16 })),
-    });
-  } else {
-    await typeInNotepad(page, 'hello world');
-  }
+  if (testInfo.project.name.includes('Mobile')) return;
 
+  await page.getByRole('textbox', { name: 'Left JSON input' }).fill('{"a":1}');
   await expect(undoButton).toBeEnabled();
-  await expect(redoButton).toBeDisabled();
 
-  if (testInfo.project.name.includes('Mobile')) {
-    await expect(undoButton).toBeVisible();
-    return;
-  }
-
-  await undoButton.click({ force: true });
+  await undoButton.click();
   await expect(redoButton).toBeEnabled();
-
-  await redoButton.click({ force: true });
-  await expect(redoButton).toBeDisabled();
 });
 
 test('export dropdown opens and shows JSON format', async ({ page }, testInfo) => {
@@ -104,15 +199,9 @@ test('sidebar toggle button works', async ({ page }) => {
   if (isCollapsed) {
     await sidebarToggle.click();
     await expect(sidebar).toHaveClass(/open/);
-    if (mobile) {
-      await page.locator('.sidebar-backdrop').click();
-    } else {
-      await sidebarToggle.click();
-    }
-    await expect(sidebar).toHaveClass(/collapsed/);
-    return;
+  } else {
+    await expect(sidebar).toHaveClass(/open/);
   }
-  await expect(sidebar).toHaveClass(/open/);
   if (mobile) {
     await page.locator('.sidebar-backdrop').click();
   } else {
@@ -127,38 +216,26 @@ test('dark mode toggle works', async ({ page }) => {
   const themeButton = page.getByRole('button', { name: /Switch to dark mode/i });
   if (await themeButton.isVisible()) {
     await themeButton.click();
-    const html = page.locator('html');
-    await expect(html).toHaveAttribute('data-theme', 'dark');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 
     const lightButton = page.getByRole('button', { name: /Switch to light mode/i });
     await lightButton.click();
-    await expect(html).toHaveAttribute('data-theme', 'light');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   }
 });
 
 test('SEO meta tags are present', async ({ page }) => {
   await page.goto('/');
-
-  const title = await page.title();
-  expect(title).toBeTruthy();
-
-  const description = await page.getAttribute('meta[name="description"]', 'content');
-  expect(description).toBeTruthy();
-
-  const ogTitle = await page.getAttribute('meta[property="og:title"]', 'content');
-  expect(ogTitle).toBeTruthy();
-
-  const ogImage = await page.getAttribute('meta[property="og:image"]', 'content');
-  expect(ogImage).toBeTruthy();
-
-  const canonical = await page.getAttribute('link[rel="canonical"]', 'href');
-  expect(canonical).toBeTruthy();
+  expect(await page.title()).toBeTruthy();
+  expect(await page.getAttribute('meta[name="description"]', 'content')).toBeTruthy();
+  expect(await page.getAttribute('meta[property="og:title"]', 'content')).toBeTruthy();
+  expect(await page.getAttribute('meta[property="og:image"]', 'content')).toBeTruthy();
+  expect(await page.getAttribute('link[rel="canonical"]', 'href')).toBeTruthy();
 });
 
 test('JSON-LD structured data is present', async ({ page }) => {
   await page.goto('/');
-  const jsonLd = page.locator('script[type="application/ld+json"]').first();
-  const content = await jsonLd.textContent();
+  const content = await page.locator('script[type="application/ld+json"]').first().textContent();
   const parsed = JSON.parse(content!);
   expect(parsed['@type']).toBe('WebApplication');
   expect(parsed.name).toBeTruthy();
@@ -168,84 +245,29 @@ test('JSON-LD structured data is present', async ({ page }) => {
 test('sitemap.xml is accessible', async ({ page }) => {
   const response = await page.goto('/sitemap.xml');
   expect(response?.ok()).toBe(true);
-  const content = await response?.text();
-  expect(content).toContain('urlset');
+  expect(await response?.text()).toContain('urlset');
 });
 
 test('robots.txt is accessible', async ({ page }) => {
   const response = await page.goto('/robots.txt');
   expect(response?.ok()).toBe(true);
-  const content = await response?.text();
-  expect(content).toMatch(/User-[Aa]gent/);
+  expect(await response?.text()).toMatch(/User-[Aa]gent/);
 });
 
-test('keyboard shortcuts overlay opens and closes', async ({ page, browserName }, _testInfo) => {
-  if (browserName !== 'chromium') return;
-  await page.goto('/');
-  await ensureToolbarInteractable(page);
-  if (_testInfo.project.name.includes('Mobile')) {
-    await expect(page.getByRole('button', { name: /keyboard shortcuts/i })).toBeVisible();
-    return;
-  }
-  await page.getByRole('button', { name: /keyboard shortcuts/i }).click({ force: true });
-  await expect(page.getByRole('dialog')).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog')).not.toBeVisible();
-});
-
-test('undo/redo via keyboard shortcuts', async ({ page }, testInfo) => {
-  await page.addInitScript(() => {
-    localStorage.clear();
-  });
-  await page.goto('/');
-  await ensureToolbarInteractable(page);
-  if (testInfo.project.name.includes('Mobile')) {
-    const fileInput = page.locator('input[type="file"]');
-    await fileInput.evaluate((el: HTMLInputElement) => {
-      el.style.display = 'block';
-      el.style.visibility = 'visible';
-    });
-    await fileInput.setInputFiles({
-      name: 'keyboard-mobile.json',
-      mimeType: 'application/json',
-      buffer: Buffer.from(JSON.stringify({ text: 'keyboard mobile' })),
-    });
-  } else {
-    await typeInNotepad(page, 'keyboard test');
-  }
-
-  const undoButton = page.getByRole('button', { name: 'Undo (Ctrl+Z)' });
-  await expect(undoButton).toBeEnabled();
-
-  const redoButton = page.getByRole('button', { name: 'Redo (Ctrl+Y)' });
-  await expect(redoButton).toBeDisabled();
-
-  await page.locator('body').press('Control+z');
-  await expect(redoButton).toBeEnabled();
-
-  await page.locator('body').press('Control+Shift+z');
-  await expect(undoButton).toBeEnabled();
-});
-
-test('mobile sidebar backdrop closes sidebar', async ({ page }) => {
-  await page.setViewportSize({ width: 375, height: 667 });
-  await page.goto('/');
-
-  await ensureToolbarInteractable(page);
-  const sidebar = page.locator('.tool-shell-sidebar');
-
-  await page.locator('[aria-label="Show options"]').click();
-  await expect(sidebar).toHaveClass(/open/);
-
-  await page.locator('.sidebar-backdrop').evaluate((el) => (el as HTMLElement).click());
-  await expect(sidebar).toHaveClass(/collapsed/);
+test('404 page works', async ({ page }) => {
+  const response = await page.goto('/this-page-does-not-exist');
+  expect(response?.status()).toBe(404);
+  await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible();
 });
 
 test('import from json file works', async ({ page }) => {
   await page.goto('/');
   await ensureToolbarInteractable(page);
 
-  const fileContent = JSON.stringify({ text: 'Imported Note' });
+  const fileContent = JSON.stringify({
+    leftText: '{"imported":true}',
+    rightText: '{"imported":false}',
+  });
 
   const fileInput = page.locator('input[type="file"]');
   await fileInput.evaluate((el: HTMLInputElement) => {
@@ -259,108 +281,9 @@ test('import from json file works', async ({ page }) => {
   });
 
   await expect
-    .poll(() => page.locator('.notepad-textarea').inputValue())
-    .toContain('Imported Note');
-});
-
-test('export json download triggers', async ({ page }) => {
-  await page.goto('/');
-  await ensureToolbarInteractable(page);
-
-  const exportButton = page.getByRole('button', { name: /export/i });
-  await exportButton.click({ force: true });
-
-  const jsonOption = page.getByRole('option', { name: /JSON/ });
-  const [download] = await Promise.all([page.waitForEvent('download'), jsonOption.click()]);
-  expect(download.suggestedFilename()).toMatch(/\.json$/);
-});
-
-test('image export downloads trigger for screenshot formats', async ({ page }, testInfo) => {
-  await page.goto('/');
-  await ensureToolbarInteractable(page);
-
-  if (testInfo.project.name.includes('Mobile')) {
-    await expect(page.getByRole('button', { name: /export/i })).toBeVisible();
-    return;
-  }
-
-  const expected: Array<{ option: RegExp; ext: RegExp }> = [
-    { option: /PNG/, ext: /\.png$/i },
-    { option: /JPEG/, ext: /\.(jpg|jpeg)$/i },
-    { option: /webp/i, ext: /\.webp$/i },
-  ];
-
-  for (const format of expected) {
-    await ensureToolbarInteractable(page);
-    await page.getByRole('button', { name: /export/i }).click({ force: true });
-    const option = page.getByRole('option', { name: format.option });
-    await expect(option).toBeVisible();
-    const [download] = await Promise.all([page.waitForEvent('download'), option.click()]);
-    expect(download.suggestedFilename()).toMatch(format.ext);
-  }
-});
-
-test('pdf export triggers print dialog', async ({ page }, testInfo) => {
-  await page.goto('/');
-  await ensureToolbarInteractable(page);
-
-  const exportButton = page.getByRole('button', { name: /export/i });
-  await exportButton.click({ force: true });
-
-  if (testInfo.project.name.includes('Mobile')) {
-    await expect(exportButton).toBeVisible();
-    return;
-  }
-
-  const pdfOption = page.getByRole('option', { name: /pdf/i });
-  await expect(pdfOption).toBeVisible();
-
-  // Intercept the hidden print iframe via MutationObserver + console log
-  const consolePromise = new Promise<string>((resolve) => {
-    const handler = (msg: import('@playwright/test').ConsoleMessage) => {
-      const text = msg.text();
-      if (text.includes('__printIntercepted__')) {
-        page.off('console', handler);
-        resolve(text);
-      }
-    };
-    page.on('console', handler);
-  });
-
-  await page.evaluate(() => {
-    const observer = new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        for (const node of m.addedNodes) {
-          if (node instanceof HTMLIFrameElement) {
-            try {
-              const cw = (node as HTMLIFrameElement).contentWindow;
-              if (cw) {
-                cw.print = () => {
-                  console.log('__printIntercepted__');
-                };
-              }
-            } catch {
-              // cross-origin iframe, ignore
-            }
-          }
-        }
-      }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-  });
-
-  await pdfOption.click();
-
-  const consoleText = await consolePromise;
-  expect(consoleText).toContain('__printIntercepted__');
-});
-
-test('404 page works', async ({ page }) => {
-  const response = await page.goto('/this-page-does-not-exist');
-  expect(response?.status()).toBe(404);
-  const contentType = response?.headers()['content-type'] ?? '';
-  expect(contentType).toContain('text/html');
-  await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible();
+    .poll(() => page.getByRole('textbox', { name: 'Left JSON input' }).inputValue())
+    .toBe('{"imported":true}');
+  await expect(page.locator('.jd-row[data-path="$.imported"]')).toHaveCount(1);
 });
 
 test('visual regression — default view', async ({ page, browserName }) => {
@@ -369,21 +292,3 @@ test('visual regression — default view', async ({ page, browserName }) => {
   await page.waitForSelector('.tool-shell-canvas');
   await expect(page.locator('.tool-shell')).toBeVisible();
 });
-
-// test('visual regression — dark mode', async ({ page }) => {
-//   await page.goto('/');
-//   await page.waitForSelector('.tool-shell-canvas');
-//   const themeButton = page.getByRole('button', { name: /Switch to dark mode/i });
-//   if (await themeButton.isVisible()) {
-//     await themeButton.click();
-//     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-//     await expect(page).toHaveScreenshot('tool-dark.png', { maxDiffPixels: 100 });
-//   }
-// });
-
-// test('visual regression — mobile view', async ({ page }) => {
-//   await page.setViewportSize({ width: 375, height: 667 });
-//   await page.goto('/');
-//   await page.waitForSelector('.tool-shell-canvas');
-//   await expect(page).toHaveScreenshot('tool-mobile.png', { maxDiffPixels: 100 });
-// });

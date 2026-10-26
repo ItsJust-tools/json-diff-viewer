@@ -4,21 +4,38 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ToolShell, useTool, ImportExport } from '@itsjust/core';
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string';
 import {
-  toolConfig,
-  templateBaseVersion,
-  notepadTool,
+  MAX_JSON_TEXT_LENGTH,
+  SAMPLE_LEFT,
+  SAMPLE_RIGHT,
   ToolCanvas,
-  ToolToolbar,
   ToolSidebar,
+  ToolToolbar,
+  buildDiffReport,
+  diffJsonText,
+  downloadTextFile,
+  jsonDiffTool,
+  reportFilename,
+  reportToJson,
+  reportToMarkdown,
+  templateBaseVersion,
+  toolConfig,
+  type DiffFilter,
+  type DiffReportFormat,
+  type DiffViewMode,
+  type JsonSide,
 } from '@/tool';
+import '../tool/components/json-diff-viewer.css';
 
-const DEFAULT_FONT_SIZE = 16;
-const MIN_FONT_SIZE = 8;
-const MAX_FONT_SIZE = 72;
+/** Re-serialize a JSON document with 2-space indentation. */
+function prettyPrint(text: string): string {
+  const parsed = JSON.parse(text) as unknown;
+  return JSON.stringify(parsed, null, 2);
+}
 
 export default function ToolClient() {
   const canvasRef = useRef<HTMLDivElement>(null);
-  const tool = useTool(notepadTool, canvasRef);
+  const tool = useTool(jsonDiffTool, canvasRef);
+  const data = tool.state.data;
   const setToolData = tool.state.setData;
   const showToast = tool.toast;
   const [isSharing, setIsSharing] = useState(false);
@@ -26,26 +43,162 @@ export default function ToolClient() {
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(
     () => typeof window !== 'undefined' && window.innerWidth > 768 && toolConfig.features.sidebar
   );
-  const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
 
-  const title = tool.state.data.title?.trim() || toolConfig.name;
-  const [isEditingBrand, setIsEditingBrand] = useState(false);
-  const [editValue, setEditValue] = useState(title);
+  const diff = useMemo(
+    () => diffJsonText(data.leftText, data.rightText),
+    [data.leftText, data.rightText]
+  );
 
   useEffect(() => {
-    document.title = title;
-  }, [title]);
+    document.title = toolConfig.name;
+  }, []);
 
-  const handleTextChange = useCallback(
-    (text: string) => {
-      setToolData((prev) => ({ ...prev, text }));
+  /* ------------------------------ state updates ----------------------------- */
+
+  const applyText = useCallback(
+    (side: JsonSide, text: string) => {
+      if (text.length > MAX_JSON_TEXT_LENGTH) {
+        const kept = text.slice(0, MAX_JSON_TEXT_LENGTH);
+        showToast(
+          `Input truncated to ${MAX_JSON_TEXT_LENGTH.toLocaleString()} characters (${(
+            text.length - MAX_JSON_TEXT_LENGTH
+          ).toLocaleString()} dropped)`,
+          'error'
+        );
+        setToolData((prev) =>
+          side === 'left' ? { ...prev, leftText: kept } : { ...prev, rightText: kept }
+        );
+        return;
+      }
+      setToolData((prev) =>
+        side === 'left' ? { ...prev, leftText: text } : { ...prev, rightText: text }
+      );
+    },
+    [setToolData, showToast]
+  );
+
+  const setLeftText = useCallback((text: string) => applyText('left', text), [applyText]);
+  const setRightText = useCallback((text: string) => applyText('right', text), [applyText]);
+
+  const setViewMode = useCallback(
+    (viewMode: DiffViewMode) => {
+      setToolData((prev) => ({ ...prev, viewMode }));
     },
     [setToolData]
   );
 
-  const handleFontSizeChange = useCallback((delta: number) => {
-    setFontSize((prev) => Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, prev + delta)));
-  }, []);
+  const setSearchQuery = useCallback(
+    (searchQuery: string) => {
+      setToolData((prev) => ({ ...prev, searchQuery }));
+    },
+    [setToolData]
+  );
+
+  const setFilter = useCallback(
+    (filter: DiffFilter) => {
+      setToolData((prev) => ({ ...prev, filter }));
+    },
+    [setToolData]
+  );
+
+  const setShowOnlyChanges = useCallback(
+    (showOnlyChanges: boolean) => {
+      setToolData((prev) => ({ ...prev, showOnlyChanges }));
+    },
+    [setToolData]
+  );
+
+  const setEditorsVisible = useCallback(
+    (editorsVisible: boolean) => {
+      setToolData((prev) => ({ ...prev, editorsVisible }));
+    },
+    [setToolData]
+  );
+
+  const setWrapLines = useCallback(
+    (wrapLines: boolean) => {
+      setToolData((prev) => ({ ...prev, wrapLines }));
+    },
+    [setToolData]
+  );
+
+  /* -------------------------------- actions --------------------------------- */
+
+  const formatBoth = useCallback(() => {
+    const problems: string[] = [];
+    let nextLeftText = data.leftText;
+    let nextRightText = data.rightText;
+
+    for (const side of ['left', 'right'] as const) {
+      const text = side === 'left' ? data.leftText : data.rightText;
+      if (text.trim() === '') continue;
+      try {
+        const formatted = prettyPrint(text);
+        if (side === 'left') nextLeftText = formatted;
+        else nextRightText = formatted;
+      } catch {
+        problems.push(side === 'left' ? 'Original' : 'Modified');
+      }
+    }
+
+    if (nextLeftText !== data.leftText || nextRightText !== data.rightText) {
+      setToolData((prev) => ({ ...prev, leftText: nextLeftText, rightText: nextRightText }));
+    }
+
+    if (problems.length > 0) {
+      showToast(`Could not format: ${problems.join(', ')} — fix the JSON errors first`, 'error');
+      return;
+    }
+    if (nextLeftText.trim() === '' && nextRightText.trim() === '') {
+      showToast('Nothing to format yet', 'error');
+      return;
+    }
+    showToast('Both inputs formatted', 'success');
+  }, [data.leftText, data.rightText, setToolData, showToast]);
+
+  const loadSample = useCallback(() => {
+    setToolData((prev) => ({
+      ...prev,
+      leftText: SAMPLE_LEFT,
+      rightText: SAMPLE_RIGHT,
+      filter: 'all',
+      searchQuery: '',
+    }));
+    showToast('Sample comparison loaded', 'success');
+  }, [setToolData, showToast]);
+
+  const clearAll = useCallback(() => {
+    setToolData((prev) => ({
+      ...prev,
+      leftText: '',
+      rightText: '',
+      filter: 'all',
+      searchQuery: '',
+    }));
+    showToast('Cleared both inputs', 'success');
+  }, [setToolData, showToast]);
+
+  const exportReport = useCallback(
+    (format: DiffReportFormat) => {
+      if (!diff.comparable) {
+        const invalidSide = diff.left.status === 'invalid' ? 'Original' : 'Modified';
+        showToast(`${invalidSide} JSON is not valid — fix it before exporting a report`, 'error');
+        return;
+      }
+      const report = buildDiffReport(diff, {
+        tool: toolConfig.name,
+        version: toolConfig.version,
+        viewMode: data.viewMode,
+      });
+      const content = format === 'json' ? reportToJson(report) : reportToMarkdown(report);
+      const filename = reportFilename(format);
+      downloadTextFile(filename, content, format === 'json' ? 'application/json' : 'text/markdown');
+      showToast(`Report downloaded as ${filename}`, 'success');
+    },
+    [data.viewMode, diff, showToast]
+  );
+
+  /* ------------------------------ shared state ------------------------------ */
 
   useEffect(() => {
     if (hasLoadedSharedState.current) return;
@@ -57,7 +210,7 @@ export default function ToolClient() {
       const serialized = decompressFromEncodedURIComponent(encodedState);
       if (!serialized) throw new Error('Invalid shared URL');
       const parsed: unknown = JSON.parse(serialized);
-      const deserialized = notepadTool.deserialize(parsed);
+      const deserialized = jsonDiffTool.deserialize(parsed);
       if (!deserialized.success) throw new Error(deserialized.error);
       setToolData(deserialized.data);
       showToast('Loaded state from shared URL', 'success');
@@ -70,7 +223,7 @@ export default function ToolClient() {
   const handleShare = useCallback(async () => {
     setIsSharing(true);
     try {
-      const serialized = notepadTool.serialize(tool.state.data);
+      const serialized = jsonDiffTool.serialize(tool.state.data);
       const encodedState = compressToEncodedURIComponent(serialized);
       if (!encodedState) throw new Error('Failed to encode state for URL');
       const url = new URL(window.location.href);
@@ -81,13 +234,10 @@ export default function ToolClient() {
       const shareUrl = url.toString();
       if (navigator.share) {
         try {
-          await navigator.share({ title, url: shareUrl });
+          await navigator.share({ title: toolConfig.name, url: shareUrl });
           showToast('Shared URL ready', 'success');
           return;
         } catch (error) {
-          // AbortError means the user cancelled the native share sheet — expected
-          // user action, suppress it. navigator.share rejects with a DOMException
-          // which is not always an instanceof Error.
           const isAbort =
             typeof error === 'object' &&
             error !== null &&
@@ -99,8 +249,7 @@ export default function ToolClient() {
       try {
         await navigator.clipboard.writeText(shareUrl);
         showToast('Share URL copied to clipboard', 'success');
-      } catch (clipError) {
-        // Fallback for insecure origins, iframes, or permission rejections
+      } catch {
         let success = false;
         try {
           const textarea = document.createElement('textarea');
@@ -114,7 +263,7 @@ export default function ToolClient() {
           textarea.select();
           success = document.execCommand('copy');
           document.body.removeChild(textarea);
-        } catch (execError) {
+        } catch {
           success = false;
         }
         if (success) {
@@ -129,34 +278,61 @@ export default function ToolClient() {
     } finally {
       setIsSharing(false);
     }
-  }, [showToast, tool.state.data, title]);
+  }, [showToast, tool.state.data]);
 
-  const toolbarActions = useMemo(
-    () => ({
-      ...tool.toolbarActions,
-      onBrandClick: () => {
-        setEditValue(title);
-        setIsEditingBrand(true);
-      },
-      isBrandEditing: isEditingBrand,
-      brandValue: isEditingBrand ? editValue : title,
-      onBrandChange: (value: string) => setEditValue(value),
-      onBrandCommit: () => {
-        const trimmed = editValue.trim();
-        setToolData((prev) => ({ ...prev, title: trimmed || undefined }));
-        setIsEditingBrand(false);
-      },
-      onBrandCancel: () => {
-        setEditValue(title);
-        setIsEditingBrand(false);
-      },
-    }),
-    [tool.toolbarActions, isEditingBrand, editValue, title, setToolData]
-  );
+  /* ------------------------------- shortcuts -------------------------------- */
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      const mod = event.metaKey || event.ctrlKey;
+      if (!mod) return;
+      if (event.key === '1') {
+        event.preventDefault();
+        setViewMode('side-by-side');
+        return;
+      }
+      if (event.key === '2') {
+        event.preventDefault();
+        setViewMode('unified');
+        return;
+      }
+      if (!event.shiftKey) return;
+      const key = event.key.toLowerCase();
+      if (key === 'f') {
+        event.preventDefault();
+        formatBoth();
+      } else if (key === 'j') {
+        event.preventDefault();
+        exportReport('json');
+      } else if (key === 'm') {
+        event.preventDefault();
+        exportReport('markdown');
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [exportReport, formatBoth, setViewMode]);
+
+  /* -------------------------------- rendering ------------------------------- */
+
+  const toolbarActions = useMemo(() => ({ ...tool.toolbarActions }), [tool.toolbarActions]);
 
   const toolbarContent = (
     <>
-      <ToolToolbar />
+      <ToolToolbar
+        viewMode={data.viewMode}
+        onViewModeChange={setViewMode}
+        searchQuery={data.searchQuery}
+        onSearchChange={setSearchQuery}
+        filter={data.filter}
+        onFilterChange={setFilter}
+        showOnlyChanges={data.showOnlyChanges}
+        onShowOnlyChangesChange={setShowOnlyChanges}
+        onFormatBoth={formatBoth}
+        onLoadSample={loadSample}
+        onClear={clearAll}
+        onExportReport={exportReport}
+      />
       <ImportExport
         formats={tool.supportedFormats}
         onExport={tool.handleExport}
@@ -170,18 +346,33 @@ export default function ToolClient() {
 
   const sidebarContent = (
     <ToolSidebar
-      text={tool.state.data.text}
-      fontSize={fontSize}
-      onFontSizeChange={handleFontSizeChange}
+      diff={diff}
+      filter={data.filter}
+      onFilterChange={setFilter}
+      showOnlyChanges={data.showOnlyChanges}
+      onShowOnlyChangesChange={setShowOnlyChanges}
+      wrapLines={data.wrapLines}
+      onWrapLinesChange={setWrapLines}
+      editorsVisible={data.editorsVisible}
+      onEditorsVisibleChange={setEditorsVisible}
+      onFormatBoth={formatBoth}
     />
   );
 
   const canvasContent = (
     <ToolCanvas
       canvasRef={canvasRef}
-      text={tool.state.data.text}
-      fontSize={fontSize}
-      onChange={handleTextChange}
+      leftText={data.leftText}
+      rightText={data.rightText}
+      viewMode={data.viewMode}
+      searchQuery={data.searchQuery}
+      filter={data.filter}
+      showOnlyChanges={data.showOnlyChanges}
+      editorsVisible={data.editorsVisible}
+      wrapLines={data.wrapLines}
+      diff={diff}
+      onLeftTextChange={setLeftText}
+      onRightTextChange={setRightText}
     />
   );
 
@@ -201,7 +392,9 @@ export default function ToolClient() {
           'Ready'
         )}
       </span>
-      <span className="status-slot status-slot-font-size">{fontSize}px</span>
+      <span className="status-slot status-slot-title">
+        +{diff.stats.added} / −{diff.stats.removed} / ~{diff.stats.modified}
+      </span>
       <span className="status-slot status-slot-tool-version">Tool v{toolConfig.version}</span>
       <span className="status-slot status-slot-template-version">
         Template v{templateBaseVersion}

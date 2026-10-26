@@ -1,0 +1,859 @@
+/* ============================================================
+   JSON Diff Viewer — component styles
+   ============================================================ */
+
+.jd-canvas {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: var(--card);
+  overflow: hidden;
+}
+
+.jd-canvas ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.jd-canvas ::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+}
+
+.jd-canvas * {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* --- Editors --- */
+
+.jd-editors {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--border);
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+.jd-editor {
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  min-width: 0;
+  min-height: 0;
+  padding: 0.5rem 0.75rem 0.75rem;
+  gap: 0.375rem;
+}
+
+.jd-editor-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.jd-editor-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.jd-editor-count {
+  margin-left: auto;
+  font-size: 0.6875rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.jd-editor-textarea {
+  flex: 1 1 auto;
+  min-height: 8rem;
+  max-height: 30vh;
+  width: 100%;
+  resize: vertical;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+  color: var(--foreground);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, 'Cascadia Code', 'Segoe UI Mono', monospace;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  tab-size: 2;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.jd-editor-textarea:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+
+.jd-editor-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
+.jd-editor-textarea[aria-invalid='true'] {
+  border-color: var(--error);
+}
+
+.jd-editor-error {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--error);
+  font-family: ui-monospace, Menlo, Monaco, monospace;
+  overflow-wrap: anywhere;
+}
+
+.jd-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.0625rem 0.4375rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+
+.jd-badge-valid {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  border-color: color-mix(in srgb, var(--success) 30%, transparent);
+}
+
+.jd-badge-empty {
+  color: var(--muted);
+  background: var(--muted-bg);
+  border-color: var(--border);
+}
+
+.jd-badge-invalid {
+  color: var(--error);
+  background: color-mix(in srgb, var(--error) 12%, transparent);
+  border-color: color-mix(in srgb, var(--error) 30%, transparent);
+}
+
+/* --- Results --- */
+
+.jd-results {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.jd-results-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.5rem 0.875rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+}
+
+.jd-results-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.jd-results-meta {
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.jd-table {
+  --jd-cols: minmax(13rem, 1.1fr) minmax(9rem, 1fr) minmax(9rem, 1fr);
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.jd-table[data-view='unified'] {
+  --jd-cols: minmax(13rem, 1.2fr) minmax(9rem, 1.8fr);
+}
+
+.jd-table-head {
+  display: grid;
+  grid-template-columns: var(--jd-cols, 1fr);
+  gap: 0;
+  padding: 0;
+  min-width: var(--jd-min-width, 0);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  background: var(--card);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  flex: 0 0 auto;
+}
+
+.jd-table-head span {
+  padding: 0.375rem 0.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jd-table-head span + span {
+  border-left: 1px solid var(--border);
+}
+
+.jd-table-body {
+  display: block;
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+.jd-row {
+  display: grid;
+  grid-template-columns: var(--jd-cols, 1fr);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  font-size: 0.8125rem;
+  min-width: var(--jd-min-width, 0);
+}
+
+.jd-row:hover {
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+.jd-row-added {
+  background: color-mix(in srgb, var(--success) 9%, transparent);
+  box-shadow: inset 3px 0 0 var(--success);
+}
+
+.jd-row-removed {
+  background: color-mix(in srgb, var(--error) 9%, transparent);
+  box-shadow: inset 3px 0 0 var(--error);
+}
+
+.jd-row-modified {
+  background: color-mix(in srgb, var(--warning) 11%, transparent);
+  box-shadow: inset 3px 0 0 var(--warning);
+}
+
+.jd-row-added:hover {
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+}
+
+.jd-row-removed:hover {
+  background: color-mix(in srgb, var(--error) 15%, transparent);
+}
+
+.jd-row-modified:hover {
+  background: color-mix(in srgb, var(--warning) 18%, transparent);
+}
+
+.jd-cell {
+  display: flex;
+  align-items: baseline;
+  gap: 0.375rem;
+  padding: 0.3125rem 0.5rem;
+  min-width: 0;
+}
+
+.jd-cell + .jd-cell {
+  border-left: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+.jd-cell-path {
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.jd-sign {
+  font-family: ui-monospace, Menlo, Monaco, monospace;
+  font-weight: 700;
+  width: 1ch;
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.jd-row-added .jd-sign {
+  color: var(--success);
+}
+
+.jd-row-removed .jd-sign {
+  color: var(--error);
+}
+
+.jd-row-modified .jd-sign {
+  color: var(--warning);
+}
+
+.jd-path {
+  font-family: ui-monospace, Menlo, Monaco, 'Cascadia Code', monospace;
+  font-size: 0.8125rem;
+  color: var(--foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.jd-kind {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: 0.625rem;
+  color: var(--muted);
+  text-transform: lowercase;
+  padding: 0.0625rem 0.3125rem;
+  border-radius: 3px;
+  background: var(--muted-bg);
+}
+
+.jd-value {
+  font-family: ui-monospace, Menlo, Monaco, 'Cascadia Code', monospace;
+  font-size: 0.8125rem;
+  color: var(--foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.jd-value-wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+
+.jd-row-removed .jd-cell-left .jd-value {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--error) 60%, transparent);
+}
+
+.jd-cell-unified .jd-value {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.jd-path-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.jd-path-list code {
+  font-family: ui-monospace, Menlo, Monaco, monospace;
+  font-size: 0.75rem;
+  color: var(--error);
+  overflow-wrap: anywhere;
+}
+
+.jd-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1.5rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+  text-align: center;
+  flex: 1 1 auto;
+}
+
+.jd-empty p {
+  margin: 0;
+  max-width: 34rem;
+  line-height: 1.5;
+}
+
+.jd-truncated {
+  margin: 0;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  background: var(--sidebar-bg);
+}
+
+/* --- Toolbar --- */
+
+.jd-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding-left: 0.5rem;
+  margin-left: 0.25rem;
+  border-left: 1px solid var(--border);
+  min-width: 0;
+}
+
+.jd-segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--card);
+  flex: 0 0 auto;
+}
+
+.jd-seg-btn {
+  padding: 0.3125rem 0.625rem;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 0.12s,
+    color 0.12s;
+  min-height: 30px;
+}
+
+.jd-seg-btn + .jd-seg-btn {
+  border-left: 1px solid var(--border);
+}
+
+.jd-seg-btn:hover {
+  background: var(--muted-bg);
+  color: var(--foreground);
+}
+
+.jd-seg-btn.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.jd-search {
+  flex: 1 1 10rem;
+  min-width: 8rem;
+  max-width: 20rem;
+}
+
+.jd-search-input {
+  width: 100%;
+  padding: 0.3125rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 0.75rem;
+  min-height: 30px;
+  transition: border-color 0.15s;
+}
+
+.jd-search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-subtle);
+}
+
+.jd-select {
+  padding: 0.3125rem 0.375rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 0.75rem;
+  min-height: 30px;
+}
+
+.jd-select-wrap {
+  flex: 0 0 auto;
+}
+
+.jd-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  flex: 0 0 auto;
+  cursor: pointer;
+  user-select: none;
+}
+
+.jd-check input {
+  accent-color: var(--accent);
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.jd-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.jd-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  padding: 0.3125rem 0.5625rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--foreground);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  min-height: 30px;
+  transition:
+    background-color 0.12s,
+    border-color 0.12s,
+    color 0.12s;
+}
+
+.jd-btn:hover:not(:disabled) {
+  background: var(--muted-bg);
+  border-color: var(--accent);
+}
+
+.jd-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.jd-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.jd-btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.jd-btn-danger:hover:not(:disabled) {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.jd-btn-block {
+  width: 100%;
+  justify-content: center;
+}
+
+.jd-menu {
+  position: relative;
+}
+
+.jd-menu-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.25rem);
+  z-index: 30;
+  min-width: 11rem;
+  display: flex;
+  flex-direction: column;
+  padding: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow-md);
+}
+
+.jd-menu-item {
+  padding: 0.4375rem 0.625rem;
+  border: none;
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  color: var(--foreground);
+  font-size: 0.8125rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.jd-menu-item:hover {
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+
+/* --- Sidebar --- */
+
+.jd-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0.875rem 0.875rem 1.5rem;
+}
+
+.jd-side-section h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.jd-stats {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.jd-stat,
+.jd-status-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.jd-stat dt,
+.jd-status-row dt {
+  color: var(--muted);
+  margin: 0;
+}
+
+.jd-stat dd,
+.jd-status-row dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+}
+
+.jd-stat-added {
+  color: var(--success);
+}
+
+.jd-stat-removed {
+  color: var(--error);
+}
+
+.jd-stat-modified {
+  color: var(--warning);
+}
+
+.jd-identical-note {
+  margin: 0.625rem 0 0;
+  font-size: 0.75rem;
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+  border-radius: var(--radius);
+  padding: 0.375rem 0.5rem;
+}
+
+.jd-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  display: inline-block;
+}
+
+.jd-status-valid {
+  background: var(--success);
+}
+
+.jd-status-invalid {
+  background: var(--error);
+}
+
+.jd-status-empty {
+  background: var(--muted);
+}
+
+.jd-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3125rem;
+}
+
+.jd-chip {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition:
+    background-color 0.12s,
+    color 0.12s,
+    border-color 0.12s;
+}
+
+.jd-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.jd-chip.is-active {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.jd-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.4375rem;
+  font-size: 0.8125rem;
+  padding: 0.25rem 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.jd-switch input {
+  accent-color: var(--accent);
+  width: 0.9375rem;
+  height: 0.9375rem;
+}
+
+.jd-side-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.jd-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --- Responsive --- */
+
+@media (max-width: 900px) {
+  .jd-editors {
+    grid-template-columns: 1fr;
+  }
+
+  .jd-editor-textarea {
+    max-height: 18vh;
+  }
+
+  .jd-search {
+    max-width: none;
+    flex: 1 1 100%;
+  }
+
+  .jd-toolbar-actions {
+    margin-left: 0;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 640px) {
+  .jd-btn-label,
+  .jd-seg-btn {
+    font-size: 0.6875rem;
+  }
+
+  /* Keep an accessible label for the "only changes" checkbox but shorten it. */
+  .jd-check span {
+    font-size: 0.6875rem;
+  }
+
+  .jd-kind {
+    display: none;
+  }
+
+  .jd-results-head {
+    padding: 0.375rem 0.5rem;
+  }
+
+  /* Narrow screens: stack each row as a card so both values stay visible. */
+  .jd-table-head {
+    display: none;
+  }
+
+  .jd-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 0.375rem 0;
+  }
+
+  .jd-cell {
+    padding: 0.1875rem 0.625rem;
+  }
+
+  .jd-cell + .jd-cell {
+    border-left: none;
+  }
+
+  .jd-cell-left::before,
+  .jd-cell-right::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    width: 4.25rem;
+  }
+
+  .jd-value {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* --- Print --- */
+
+@media print {
+  .jd-toolbar,
+  .jd-editors {
+    display: none !important;
+  }
+
+  .jd-canvas,
+  .jd-results,
+  .jd-table,
+  .jd-table-body {
+    height: auto !important;
+    overflow: visible !important;
+    min-height: 0 !important;
+  }
+
+  .jd-row {
+    break-inside: avoid;
+  }
+
+  .jd-row-added,
+  .jd-row-removed,
+  .jd-row-modified {
+    background: transparent !important;
+  }
+}
